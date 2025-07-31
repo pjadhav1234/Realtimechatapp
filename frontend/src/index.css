@@ -1,6 +1,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Optional if using DaisyUI */
-@import "daisyui";

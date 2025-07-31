@@ -1,7 +1,7 @@
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
-import cloudinary from "cloudinary";
+import cloudinary from "../lib/cloudinary.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -47,10 +47,8 @@ export const signup = async (req, res) => {
   }
 };
 
-
-
-export const login =async (req, res) => {
-     const { email, password } = req.body;
+export const login = async (req, res) => {
+  const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
 
@@ -77,114 +75,44 @@ export const login =async (req, res) => {
   }
 };
 
-// Logout controller exported for use in route definitions
-export const logout = (req, res) => {          // ← Arrow‑function handler receives Express’s req & res objects
-  try {                                        // ← Enter protected block to catch unexpected errors
-    /* 
-       Tell the browser to overwrite the “jwt” cookie with an empty string.
-       Setting maxAge to 0 instructs the browser to delete the cookie immediately.
-       (You could also use { expires: new Date(0) } with the same effect.)
-    */
-    res.cookie("jwt", "", {                    // ← Name: "jwt", Value: empty, Options:
-      maxAge: 0,                              //    • 0 ms lifetime ⇒ delete the cookie right away
-    });
-
-    // Send an HTTP 200 OK response with a friendly JSON confirmation message
+export const logout = (req, res) => {
+  try {
+    res.cookie("jwt", "", { maxAge: 0 });
     res.status(200).json({ message: "Logged out successfully" });
-  } catch (error) {                           // ← If anything above throws, execution jumps here
-    console.log("Error in logout controller", error.message);  // ← Log details for the server admin
-    // Respond with a generic 500 Internal Server Error and short message for the client
+  } catch (error) {
+    console.log("Error in logout controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
-
-
-export const updateProfile = async (req, res) => {              // ← Async so we can `await` DB I/O
+export const updateProfile = async (req, res) => {
   try {
-    /*--------------------------------------------------------------
-      1️⃣  Extract basic fields that the client sent in the request body
-          (e.g. via a `<form>` or JSON payload)
-    ----------------------------------------------------------------*/
-    const { fullName, email, profilePic } = req.body;            // ← Destructure name, e‑mail, and a Base‑64 / URL / file ID for the avatar
+    const { profilePic } = req.body;
+    const userId = req.user._id;
 
-    /*--------------------------------------------------------------
-      2️⃣  Get the user’s MongoDB ID that the auth middleware injected
-    ----------------------------------------------------------------*/
-    const userId = req.user._id;                                 // ← `protectRoute` (or similar) put the decoded JWT payload on req.user
-
-    /*--------------------------------------------------------------
-      3️⃣  Basic validation of required text fields
-    ----------------------------------------------------------------*/
-    if (!fullName || !email) {                                   // ← Either value missing?
-      return res                                                  //   ↳ Immediately send a *400 Bad Request* ...
-        .status(400)
-        .json({ message: "Full name and email are required" });   //   ... and stop the function (`return`)
+    if (!profilePic) {
+      return res.status(400).json({ message: "Profile pic is required" });
     }
 
-    /*--------------------------------------------------------------
-      4️⃣  Make sure the user actually exists in the database
-    ----------------------------------------------------------------*/
-    const user = await User.findById(userId);                    // ← Query once to be safe (and to reuse doc if you like)
-
-    if (!user) {                                                 // ← No match? 99 % of the time this won’t happen if
-      return res                                                  //   your auth middleware was correct—but let’s be safe
-        .status(404)
-        .json({ message: "User not found" });
-    }
-
-    /*--------------------------------------------------------------
-      5️⃣  Optional validation: avatar must be present
-    ----------------------------------------------------------------*/
-    if (!profilePic) {                                           // ← They forgot to attach/choose an image?
-      return res                                                  //   ↳ Same pattern: reply & exit
-        .status(400)
-        .json({ message: "Profile picture is required" });
-    }
-
-    /*--------------------------------------------------------------
-      6️⃣  Upload the raw image / URL to Cloudinary (external CDN)
-          cloudinary.uploader.upload() returns metadata including
-          `secure_url`, a HTTPS link that is publicly accessible.
-    ----------------------------------------------------------------*/
-    const uploadResp = await cloudinary.uploader.upload(profilePic);
-    //                          ▲──────────── cloudinary SDK call
-
-    /*--------------------------------------------------------------
-      7️⃣  Persist the new data in MongoDB
-          • findByIdAndUpdate lets us update in one round‑trip
-          • `{ new:true }` tells Mongoose to return **the updated doc**
-    ----------------------------------------------------------------*/
-    const updatedProfile = await User.findByIdAndUpdate(         // ← Static model method, NOT the `user` doc instance
-      userId,                                                    //   ← Query filter
-      {                                                          //   ← Update payload
-        fullName,                                                //       Update name
-        email,                                                   //       Update e‑mail
-        profilePic: uploadResp.secure_url,                       //       Save Cloudinary URL
-      },
-      { new: true }                                              //   ← Return the doc *after* modification
+    const uploadResponse = await cloudinary.uploader.upload(profilePic);
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { profilePic: uploadResponse.secure_url },
+      { new: true }
     );
 
-    /*--------------------------------------------------------------
-      8️⃣  All good – reply with the fresh user object
-    ----------------------------------------------------------------*/
-    res.status(200).json(updatedProfile);                        // ← Send the new doc back to the client
+    res.status(200).json(updatedUser);
   } catch (error) {
-    /*--------------------------------------------------------------
-      9️⃣  Unexpected errors (DB offline, Cloudinary failure, etc.)
-    ----------------------------------------------------------------*/
-    console.log("Error in updateProfile controller:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.log("error in update profile:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-
-export const checkAuth=(req,res)=>{
-  try { 
-    res.status(200).json(req.user); // Send the user object back to the client
-    
+export const checkAuth = (req, res) => {
+  try {
+    res.status(200).json(req.user);
   } catch (error) {
-    console.log("Error in checkAuth controller",error,message);
-    res.status(500).json({message:"Internal server Error"});
+    console.log("Error in checkAuth controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
-}
+};

@@ -1,36 +1,42 @@
-// Import the Express framework
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-// Import authentication-related route definitions
-import authRoutes from "./routes/auth.route.js";
-import messageRoutes from "./routes/auth.route.js";
-import { connectDB } from "./lib/db.js";
 import cors from "cors";
 
-// Initialize dotenv (loads variables into process.env)
+import path from "path";
+
+import { connectDB } from "./lib/db.js";
+
+import authRoutes from "./routes/auth.route.js";
+import messageRoutes from "./routes/message.route.js";
+import { app, server } from "./lib/socket.js";
+
 dotenv.config();
 
-// Create an Express application
-const app = express();
-app.use(express.json()); // Middleware to parse JSON bodies
-app.use(cookieParser()); // Middleware to parse cookies
-app.use(cors({
-  origin: "http://localhost:5173", // Allow requests from this origin
-  credentials: true, // Allow cookies to be sent with requests
-})); // Middleware to handle CORS (Cross-Origin Resource Sharing)
+const PORT = process.env.PORT;
+const __dirname = path.resolve();
 
-
-// Set the port from environment or use 5001 as default
-const PORT = process.env.PORT || 5001;
-
-// ─── Mount middleware / routes
+app.use(express.json());
+app.use(cookieParser());
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
 
 app.use("/api/auth", authRoutes);
-app.use("/api/message", messageRoutes);
+app.use("/api/messages", messageRoutes);
 
-// Start the server on port 5001
-app.listen(PORT, () => {
-  console.log("Server is running on port :" + PORT);
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
+  });
+}
+
+server.listen(PORT, () => {
+  console.log("server is running on PORT:" + PORT);
   connectDB();
 });
